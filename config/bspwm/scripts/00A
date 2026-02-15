@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# ~/.config/bspwm/autostart.sh
+# BSPWM Autostart Script - Clean and Corrected Version
+
+# =========== VARIABEL KONFIGURASI =========== #
+WALLPAPER_PATH="$HOME/.config/bspwm/wallpaper/Sinon-3.jpg"
+POLYBAR_LAUNCH="$HOME/.config/polybar/launch.sh"
+PICOM_AUTO="$HOME/.config/picom/auto.sh"
+PICOM_PAUSE="$HOME/.config/picom/pause.sh"
+PICOM_CONFIG="$HOME/.config/picom/picom.conf"
+POLKIT_AGENT="/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+MONITOR_SCRIPT="$HOME/.config/sxhkd/scripts/monitor"
+
+# =========== FUNGSI BANTUAN =========== #
+log_info() {
+    echo "[AUTOSTART] $1"
+}
+
+log_warning() {
+    echo "[WARNING] $1"
+}
+
+kill_process_safe() {
+    local proc_name="$1"
+    local timeout=3
+    
+    # Cek apakah proses berjalan
+    if pgrep -x "$proc_name" >/dev/null; then
+        log_info "Menghentikan $proc_name..."
+        pkill -x "$proc_name"
+        
+        # Tunggu proses berhenti
+        while [[ $timeout -gt 0 ]] && pgrep -x "$proc_name" >/dev/null; do
+            sleep 0.5
+            ((timeout--))
+        done
+        
+        if [[ $timeout -eq 0 ]]; then
+            log_warning "Gagal menghentikan $proc_name sepenuhnya"
+            pkill -9 -x "$proc_name" 2>/dev/null
+        else
+            log_info "$proc_name berhasil dihentikan"
+        fi
+    fi
+}
+
+check_and_run() {
+    local name="$1"
+    local cmd="$2"
+    
+    if command -v "$(echo "$cmd" | awk '{print $1}')" >/dev/null 2>&1; then
+        log_info "Menjalankan $name..."
+        eval "$cmd" &
+        return 0
+    else
+        log_warning "$name tidak tersedia"
+        return 1
+    fi
+}
+
+# =========== MAIN SCRIPT =========== #
+log_info "========================================"
+log_info "     BSPWM AUTOSTART SCRIPT"
+log_info "========================================"
+
+# Tunggu WM benar-benar siap
+log_info "Menunggu WM siap..."
+sleep 0.5
+
+# =========== HENTIKAN PROSES LAMA =========== #
+kill_process_safe "picom"
+kill_process_safe "polybar"
+kill_process_safe "dunst"
+kill_process_safe "sxhkd"
+
+# =========== WALLPAPER =========== #
+if [[ -f "$WALLPAPER_PATH" ]]; then
+    log_info "Mengatur wallpaper..."
+    feh --bg-fill "$WALLPAPER_PATH"
+else
+    log_warning "Wallpaper tidak ditemukan: $WALLPAPER_PATH"
+    log_info "Menggunakan wallpaper default..."
+    feh --bg-fill --randomize /usr/share/backgrounds/* 2>/dev/null || \
+    xsetroot -solid "#2E3440"
+fi
+
+# =========== POLYBAR =========== #
+if command -v polybar >/dev/null 2>&1; then
+    if [[ -f "$POLYBAR_LAUNCH" && -x "$POLYBAR_LAUNCH" ]]; then
+        log_info "Menjalankan Polybar via launch script..."
+        "$POLYBAR_LAUNCH" &
+    else
+        log_info "Menjalankan Polybar default..."
+        polybar top &
+    fi
+else
+    log_warning "Polybar tidak terinstal"
+fi
+
+# =========== PICOM =========== #
+if command -v picom >/dev/null 2>&1; then
+    # Gunakan auto.sh jika ada, jika tidak jalankan langsung
+    if [[ -f "$PICOM_AUTO" && -x "$PICOM_AUTO" ]]; then
+        log_info "Menjalankan Picom via auto.sh..."
+        "$PICOM_AUTO" &
+    elif [[ -f "$PICOM_CONFIG" ]]; then
+        log_info "Menjalankan Picom dengan config..."
+        picom --config "$PICOM_CONFIG" &
+    else
+        log_info "Menjalankan Picom default..."
+        picom &
+    fi
+    
+    # Jalankan pause.sh untuk autopause saat fullscreen
+    if [[ -f "$PICOM_PAUSE" && -x "$PICOM_PAUSE" ]]; then
+        log_info "Menjalankan Picom pause script..."
+        "$PICOM_PAUSE" &
+    fi
+else
+    log_warning "Picom tidak terinstal"
+fi
+
+# =========== DUNST =========== #
+check_and_run "Dunst" "dunst"
+
+# =========== NETWORK MANAGER =========== #
+check_and_run "NetworkManager Applet" "nm-applet"
+
+# =========== AUDIO TRAY =========== #
+if command -v pasystray >/dev/null 2>&1; then
+    log_info "Menjalankan PulseAudio tray..."
+    pasystray &
+elif command -v pnmixer >/dev/null 2>&1; then
+    log_info "Menjalankan pnmixer..."
+    pnmixer &
+fi
+
+# =========== PIPEWIRE =========== #
+if command -v pipewire >/dev/null 2>&1; then
+    # Cek apakah PipeWire sudah berjalan
+    if ! pgrep -x pipewire >/dev/null; then
+        log_info "Menjalankan PipeWire..."
+        
+        # Cek D-Bus session
+        if [[ -z "$DBUS_SESSION_BUS_ADDRESS" ]] && command -v dbus-run-session >/dev/null 2>&1; then
+            dbus-run-session -- pipewire &
+        else
+            pipewire &
+        fi
+        
+        # Tunggu PipeWire mulai
+        sleep 1
+        
+        # WirePlumber
+        if command -v wireplumber >/dev/null 2>&1 && ! pgrep -x wireplumber >/dev/null; then
+            log_info "Menjalankan WirePlumber..."
+            wireplumber &
+        fi
+        
+        # PipeWire-Pulse
+        if command -v pipewire-pulse >/dev/null 2>&1 && ! pgrep -x pipewire-pulse >/dev/null; then
+            log_info "Menjalankan PipeWire-Pulse..."
+            pipewire-pulse &
+        fi
+    else
+        log_info "PipeWire sudah berjalan"
+    fi
+fi
+
+# =========== POLKIT AGENT =========== #
+if [[ -f "$POLKIT_AGENT" && -x "$POLKIT_AGENT" ]]; then
+    log_info "Menjalankan Polkit agent..."
+    "$POLKIT_AGENT" &
+fi
+
+# =========== POWER MANAGEMENT =========== #
+log_info "Mengatur power saving display..."
+xset s 480
+xset dpms 600 600 600
+
+# =========== KEYBOARD SETTINGS =========== #
+log_info "Mengatur keyboard..."
+setxkbmap us
+xset r rate 200 40
+
+# Enable numlock
+if command -v numlockx >/dev/null 2>&1; then
+    log_info "Mengaktifkan NumLock..."
+    numlockx on
+fi
+
+# =========== MONITOR HOTPLUG =========== #
+if [[ -f "$MONITOR_SCRIPT" && -x "$MONITOR_SCRIPT" ]]; then
+    log_info "Menjalankan monitor hotplug script..."
+    "$MONITOR_SCRIPT" &
+fi
+
+# =========== SXHKD =========== #
+check_and_run "SXHKD" "sxhkd"
+
+# =========== TAMBAHAN SYS TRAY =========== #
+# Bluetooth
+if command -v blueman-applet >/dev/null 2>&1; then
+    log_info "Menjalankan Bluetooth applet..."
+    blueman-applet &
+fi
+
+# Power manager
+if command -v xfce4-power-manager >/dev/null 2>&1; then
+    log_info "Menjalankan power manager..."
+    xfce4-power-manager &
+fi
+
+# Clipboard manager
+if command -v xclip >/dev/null 2>&1; then
+    log_info "Menjalankan clipboard manager..."
+    xclip -selection clipboard &
+fi
+
+# =========== CUSTOM USER SCRIPT =========== #
+if [[ -f "$HOME/.config/bspwm/user-autostart.sh" ]]; then
+    log_info "Menjalankan user custom script..."
+    source "$HOME/.config/bspwm/user-autostart.sh"
+fi
+
+# =========== SELESAI =========== #
+log_info "========================================"
+log_info "     AUTOSTART SELESAI"
+log_info "========================================"
+
+export BSPWM_AUTOSTART_COMPLETE=1
+exit 0

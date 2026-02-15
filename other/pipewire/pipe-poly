@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# ~/.config/polybar/scripts/volume-minimal.sh
+# Minimal PipeWire Volume with Progress Bar
+
+# Get volume
+get_volume() {
+    if command -v wpctl >/dev/null 2>&1; then
+        wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | \
+            grep -oE '[0-9]+\.[0-9]+' | \
+            head -1 | \
+            awk '{print int($1 * 100)}'
+    else
+        pactl get-sink-volume @DEFAULT_SINK@ | \
+            grep -Po '[0-9]{1,3}(?=%)' | \
+            head -1
+    fi
+}
+
+# Get mute status
+get_mute() {
+    if command -v wpctl >/dev/null 2>&1; then
+        wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep -q "MUTED" && echo "1" || echo "0"
+    else
+        pactl get-sink-mute @DEFAULT_SINK@ | grep -q "yes" && echo "1" || echo "0"
+    fi
+}
+
+# Create progress bar
+progress_bar() {
+    local value="$1"
+    local max="$2"
+    local length="$3"
+    
+    local filled=$((value * length / max))
+    local empty=$((length - filled))
+    
+    local bar=""
+    for ((i=0; i<filled; i++)); do
+        bar+="■"
+    done
+    for ((i=0; i<empty; i++)); do
+        bar+="□"
+    done
+    
+    echo "$bar"
+}
+
+# Main
+volume=$(get_volume)
+muted=$(get_mute)
+
+if [ "$muted" -eq 1 ]; then
+    echo "󰖁 MUTED"
+else
+    bar=$(progress_bar "$volume" 100 8)
+    echo "󰕾 $volume% $bar"
+fi
