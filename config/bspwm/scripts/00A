@@ -58,6 +58,12 @@ run_script() {
     fi
 }
 
+# =========== D-BUS SESSION =========== #
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    log "Not Found D-Bus session, Running dbus-launch..."
+    eval "$(dbus-launch --sh-syntax --exit-with-session)"
+fi
+
 # =========== MAIN =========== #
 log "========================================"
 log "     BSPWM AUTOSTART SCRIPT"

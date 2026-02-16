@@ -1,32 +1,28 @@
 #!/usr/bin/env bash
 #
 # install.sh - Automated installation script for BSPWM desktop environment on Void Linux
-# This script will install required packages, configure PipeWire, and deploy your dotfiles.
+# FOKUS UTAMA: Memastikan D-Bus berfungsi dengan benar agar terminal dan polybar dapat berjalan.
 #
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # -----------------------------------------------------------------------------
-# Color definitions for pretty output
+# Color definitions
 # -----------------------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# -----------------------------------------------------------------------------
-# Helper functions
-# -----------------------------------------------------------------------------
 info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 
-# Check if running as root – we don't want that for user parts
 if [[ $EUID -eq 0 ]]; then
-    error "This script should NOT be run as root. Run it as a normal user."
+    error "Jangan jalankan script ini sebagai root. Jalankan sebagai user biasa."
     exit 1
 fi
 
@@ -42,23 +38,23 @@ THEMES_DIR="$HOME_DIR/.themes"
 LOCAL_BIN_DIR="$HOME_DIR/.local/bin"
 CACHE_DIR="$HOME_DIR/.cache"
 
-# Ensure required directories exist
 mkdir -p "$CONFIG_DIR" "$FONTS_DIR" "$ICONS_DIR" "$THEMES_DIR" "$LOCAL_BIN_DIR" "$CACHE_DIR"
 
 # -----------------------------------------------------------------------------
-# Package lists (corrected: polkit, not polkitd)
+# Package lists
 # -----------------------------------------------------------------------------
 PACKAGES_BASE=(
     xorg
     bspwm sxhkd
     rofi picom polybar alacritty dmenu feh
-    network-manager-applet chromium xterm
+    network-manager-applet chromium xmirror
     Thunar gvfs gvfs-mtp thunar-archive-plugin thunar-media-tags-plugin
     brightnessctl xss-lock xfce4-terminal fontconfig
     playerctl lm_sensors htop btop fastfetch betterlockscreen
     i3lock-color xrdb firefox flameshot galculator geany timeshift
     lxappearance papirus-icon-theme gtk-engine-murrine arc-theme
     font-awesome nerd-fonts dejavu-fonts-ttf noto-fonts-ttf noto-fonts-cjk
+    xdg-user-dirs
 )
 
 PACKAGES_PIPEWIRE=(
@@ -70,14 +66,14 @@ PACKAGES_PIPEWIRE=(
 )
 
 PACKAGES_SERVICES=(
-    dbus elogind
+    dbus
+    elogind
     NetworkManager
     lightdm
     rtkit
     polkit
 )
 
-# Combine all packages
 PACKAGES_ALL=(
     "${PACKAGES_BASE[@]}"
     "${PACKAGES_PIPEWIRE[@]}"
@@ -85,302 +81,204 @@ PACKAGES_ALL=(
 )
 
 # -----------------------------------------------------------------------------
-# Install required packages using xbps (per-package to avoid total failure)
+# Install packages
 # -----------------------------------------------------------------------------
 install_packages() {
-    info "Updating system and installing packages..."
+    info "Memperbarui sistem dan menginstal paket..."
 
-    sudo xbps-install -Su xbps || {
-        error "Failed to update xbps"
-        exit 1
-    }
+    sudo xbps-install -Su xbps || { error "Gagal update xbps"; exit 1; }
+    sudo xbps-install -y void-repo-multilib void-repo-multilib-nonfree void-repo-nonfree 2>/dev/null || warn "Repositori mungkin sudah ada."
+    sudo xbps-install -Su || { error "Gagal update sistem"; exit 1; }
 
-    # Add repositories (ignore errors if already added)
-    sudo xbps-install -y void-repo-multilib void-repo-multilib-nonfree void-repo-nonfree || warn "Some repositories may already be added."
-
-    sudo xbps-install -Su || {
-        error "System update failed"
-        exit 1
-    }
-
-    info "Installing packages one by one..."
     for pkg in "${PACKAGES_ALL[@]}"; do
         if ! xbps-query "$pkg" >/dev/null 2>&1; then
-            info "Installing $pkg..."
-            sudo xbps-install -y "$pkg" || warn "Failed to install $pkg"
+            info "Menginstal $pkg..."
+            sudo xbps-install -y "$pkg" || warn "Gagal menginstal $pkg"
         else
-            info "Package $pkg already installed, skipping."
+            info "Paket $pkg sudah terinstal, lewati."
         fi
     done
-
-    success "All packages installed (with possible warnings above)."
+    success "Semua paket selesai."
 }
 
 # -----------------------------------------------------------------------------
-# Setup D-Bus: ensure service is running and user is in dbus group
+# D-Bus: pastikan service berjalan dan user berada di grup dbus
 # -----------------------------------------------------------------------------
 setup_dbus() {
-    info "Checking D-Bus configuration..."
+    info "Mengonfigurasi D-Bus..."
 
-    # Ensure user is in the 'dbus' group (if it exists)
+    # Tambahkan user ke grup dbus jika ada
     if getent group dbus >/dev/null; then
         if ! groups "$USER" | grep -q dbus; then
             sudo usermod -a -G dbus "$USER"
-            info "User added to 'dbus' group. You may need to re-login for this to take effect."
+            warn "User ditambahkan ke grup 'dbus'. Anda HARUS logout dan login kembali agar efeknya berlaku."
         fi
     fi
 
-    # Check if dbus service is enabled and running
+    # Aktifkan service dbus
     if [[ -L /var/service/dbus ]]; then
         if sv status dbus | grep -q run; then
-            info "D-Bus service is running."
+            info "Service dbus sudah berjalan."
         else
-            warn "D-Bus service is enabled but not running. Attempting to start..."
             sudo sv start dbus
         fi
     else
-        warn "D-Bus service is not enabled. Enabling now..."
         if [[ -d /etc/sv/dbus ]]; then
             sudo ln -s /etc/sv/dbus /var/service/
-            info "D-Bus service enabled. It may take a moment to start."
+            info "Service dbus diaktifkan."
         else
-            error "D-Bus service directory not found. Please install dbus."
+            error "Direktori service dbus tidak ditemukan. Apakah paket dbus sudah terinstal?"
         fi
     fi
 
-    # Additional: ensure XDG_RUNTIME_DIR is set (dumb_runtime_dir should handle it)
-    if [[ -z "$XDG_RUNTIME_DIR" ]] || [[ ! -d "$XDG_RUNTIME_DIR" ]]; then
-        warn "XDG_RUNTIME_DIR is not set or does not exist. dumb_runtime_dir should handle this after login."
+    # dumb_runtime_dir untuk XDG_RUNTIME_DIR
+    if ! command -v dumb_runtime_dir >/dev/null 2>&1; then
+        sudo xbps-install -y dumb_runtime_dir
+    fi
+    if ! grep -q "pam_dumb_runtime_dir" /etc/pam.d/system-login 2>/dev/null; then
+        echo "session optional pam_dumb_runtime_dir.so" | sudo tee -a /etc/pam.d/system-login >/dev/null
     fi
 
-    success "D-Bus setup completed."
+    success "Konfigurasi D-Bus selesai. (Ingat: logout/login setelah instalasi!)"
 }
 
 # -----------------------------------------------------------------------------
-# Create standard user directories (Documents, Downloads, etc.)
+# Buat direktori user (Documents, Downloads, dll)
 # -----------------------------------------------------------------------------
 create_user_dirs() {
-    info "Creating standard user directories..."
-
-    # Try using xdg-user-dirs-update if available
+    info "Membuat direktori user standar..."
     if command -v xdg-user-dirs-update >/dev/null 2>&1; then
         xdg-user-dirs-update
-        info "xdg-user-dirs-update executed."
     else
-        warn "xdg-user-dirs not installed. Creating directories manually."
-        # Manual creation of common directories
         mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Pictures" \
                  "$HOME/Videos" "$HOME/Music" "$HOME/Desktop" \
                  "$HOME/Templates" "$HOME/Public"
     fi
-
-    # Ensure .config/user-dirs.dirs exists (for compatibility)
-    if [[ ! -f "$HOME/.config/user-dirs.dirs" ]]; then
-        cat > "$HOME/.config/user-dirs.dirs" << 'EOF'
-XDG_DESKTOP_DIR="$HOME/Desktop"
-XDG_DOWNLOAD_DIR="$HOME/Downloads"
-XDG_TEMPLATES_DIR="$HOME/Templates"
-XDG_PUBLICSHARE_DIR="$HOME/Public"
-XDG_DOCUMENTS_DIR="$HOME/Documents"
-XDG_MUSIC_DIR="$HOME/Music"
-XDG_PICTURES_DIR="$HOME/Pictures"
-XDG_VIDEOS_DIR="$HOME/Videos"
-EOF
-        info "Created default .config/user-dirs.dirs"
-    fi
-
-    success "User directories created."
+    success "Direktori user siap."
 }
 
 # -----------------------------------------------------------------------------
-# Setup PipeWire according to Void Linux documentation
+# PipeWire
 # -----------------------------------------------------------------------------
 setup_pipewire() {
-    info "Configuring PipeWire..."
-
-    # 1. Create config directories
+    info "Mengonfigurasi PipeWire..."
     mkdir -p "$CONFIG_DIR/pipewire/pipewire.conf.d"
 
-    # 2. Enable WirePlumber session manager
-    if [[ -f /usr/share/examples/wireplumber/10-wireplumber.conf ]]; then
-        ln -sf /usr/share/examples/wireplumber/10-wireplumber.conf \
-            "$CONFIG_DIR/pipewire/pipewire.conf.d/"
-        info "WirePlumber enabled"
-    else
-        warn "WirePlumber example config not found. Is wireplumber installed?"
-    fi
+    [[ -f /usr/share/examples/wireplumber/10-wireplumber.conf ]] && \
+        ln -sf /usr/share/examples/wireplumber/10-wireplumber.conf "$CONFIG_DIR/pipewire/pipewire.conf.d/"
+    [[ -f /usr/share/examples/pipewire/20-pipewire-pulse.conf ]] && \
+        ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf "$CONFIG_DIR/pipewire/pipewire.conf.d/"
 
-    # 3. Enable PulseAudio interface
-    if [[ -f /usr/share/examples/pipewire/20-pipewire-pulse.conf ]]; then
-        ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf \
-            "$CONFIG_DIR/pipewire/pipewire.conf.d/"
-        info "PipeWire PulseAudio interface enabled"
-    else
-        warn "PipeWire Pulse example config not found."
-    fi
-
-    # 4. ALSA integration
     if [[ -d /usr/share/alsa/alsa.conf.d ]]; then
         sudo mkdir -p /etc/alsa/conf.d
         sudo ln -sf /usr/share/alsa/alsa.conf.d/50-pipewire.conf /etc/alsa/conf.d/
         sudo ln -sf /usr/share/alsa/alsa.conf.d/99-pipewire-default.conf /etc/alsa/conf.d/
-        info "ALSA integration configured"
     fi
 
-    # 5. JACK integration (optional)
     if [[ -d /usr/lib/pipewire-0.3/jack ]]; then
         echo "/usr/lib/pipewire-0.3/jack" | sudo tee /etc/ld.so.conf.d/pipewire-jack.conf >/dev/null
         sudo ldconfig
-        info "JACK integration configured"
     fi
 
-    # 6. Ensure XDG_RUNTIME_DIR is set (dumb_runtime_dir)
-    if ! command -v dumb_runtime_dir >/dev/null 2>&1; then
-        info "Installing dumb_runtime_dir to manage XDG_RUNTIME_DIR..."
-        sudo xbps-install -y dumb_runtime_dir
-    fi
-
-    # Ensure pam module is enabled (optional but recommended)
-    if ! grep -q "pam_dumb_runtime_dir" /etc/pam.d/system-login 2>/dev/null; then
-        echo "session optional pam_dumb_runtime_dir.so" | sudo tee -a /etc/pam.d/system-login >/dev/null
-        info "pam_dumb_runtime_dir added to system-login"
-    fi
-
-    # 7. Autostart PipeWire and PipeWire-Pulse via desktop entries
     mkdir -p "$CONFIG_DIR/autostart"
-    if [[ -f /usr/share/applications/pipewire.desktop ]]; then
+    [[ -f /usr/share/applications/pipewire.desktop ]] && \
         ln -sf /usr/share/applications/pipewire.desktop "$CONFIG_DIR/autostart/"
-    fi
-    if [[ -f /usr/share/applications/pipewire-pulse.desktop ]]; then
+    [[ -f /usr/share/applications/pipewire-pulse.desktop ]] && \
         ln -sf /usr/share/applications/pipewire-pulse.desktop "$CONFIG_DIR/autostart/"
-    fi
-    info "PipeWire autostart configured"
 
-    # 8. Add user to audio/video groups (required when not using elogind)
     sudo usermod -a -G audio,video "$USER"
-
-    success "PipeWire setup completed."
-}
-
-# ----------------------------------------------------------------------------
-# Betterlockscreen Setup
-# ----------------------------------------------------------------------------
-setup_betterlockscreen() {
-    info "Configuring Betterlockscreen..."
-    betterlockscreen -u ~/.config/bspwm/wallpaper/Sinon-2.jpg --blur 0.8
+    success "PipeWire dikonfigurasi."
 }
 
 # -----------------------------------------------------------------------------
-# Copy dotfiles to their destinations
+# Betterlockscreen
+# -----------------------------------------------------------------------------
+setup_betterlockscreen() {
+    info "Menyiapkan Betterlockscreen..."
+    local wallpaper="$HOME/.config/bspwm/wallpaper/Sinon-2.jpg"
+    if [[ -f "$wallpaper" ]]; then
+        betterlockscreen -u "$wallpaper" --blur 0.8
+    else
+        warn "Wallpaper tidak ditemukan, lewati."
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Salin dotfiles dan lakukan penyesuaian kritis (D-Bus di bspwmrc)
 # -----------------------------------------------------------------------------
 copy_dotfiles() {
-    info "Copying configuration files..."
+    info "Menyalin file konfigurasi..."
 
-    # 1. Config directories
-    if [[ -d "$SCRIPT_DIR/config" ]]; then
-        cp -r "$SCRIPT_DIR/config/"* "$CONFIG_DIR/"
-        info "Config files copied to $CONFIG_DIR"
+    # Salin folder config
+    [[ -d "$SCRIPT_DIR/config" ]] && cp -r "$SCRIPT_DIR/config/"* "$CONFIG_DIR/"
+
+    # Font, icons, themes
+    [[ -d "$SCRIPT_DIR/fonts" ]] && cp -r "$SCRIPT_DIR/fonts/"* "$FONTS_DIR/" && fc-cache -fv "$FONTS_DIR" >/dev/null
+    [[ -d "$SCRIPT_DIR/icons" ]] && cp -r "$SCRIPT_DIR/icons/"* "$ICONS_DIR/"
+    [[ -d "$SCRIPT_DIR/themes" ]] && cp -r "$SCRIPT_DIR/themes/"* "$THEMES_DIR/"
+
+    # Skrip tambahan
+    [[ -d "$SCRIPT_DIR/other/pipewire" ]] && cp -r "$SCRIPT_DIR/other/pipewire"/* "$LOCAL_BIN_DIR/" && chmod +x "$LOCAL_BIN_DIR/"*
+    [[ -f "$SCRIPT_DIR/other/.bashrc" ]] && cp "$SCRIPT_DIR/other/.bashrc" "$HOME_DIR/"
+
+    # Konfigurasi sistem
+    [[ -d "$SCRIPT_DIR/other/xorg.conf.d" ]] && sudo cp -r "$SCRIPT_DIR/other/xorg.conf.d" /etc/X11/
+    [[ -f "$SCRIPT_DIR/other/resolv.conf" ]] && sudo cp "$SCRIPT_DIR/other/resolv.conf" /etc/
+    [[ -d "$SCRIPT_DIR/other/root" ]] && sudo cp -r "$SCRIPT_DIR/other/root/.bashrc" /root/ 2>/dev/null || true
+
+    # -------------------------------------------------------------------------
+    # PERBAIKAN UTAMA: Pastikan bspwmrc menjalankan dbus-launch jika session belum ada
+    # -------------------------------------------------------------------------
+    local bspwmrc="$CONFIG_DIR/bspwm/bspwmrc"
+    if [[ -f "$bspwmrc" ]]; then
+        # Hapus baris dbus-launch lama jika ada (agar tidak dobel)
+        sed -i '/dbus-launch/d' "$bspwmrc"
+        # Tambahkan di awal (setelah shebang)
+        sed -i '2 i\
+# Inisialisasi session D-Bus jika belum ada (krusial untuk terminal & polybar)\
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then\
+    eval "$(dbus-launch --sh-syntax --exit-with-session)"\
+fi\
+' "$bspwmrc"
+        info "Baris dbus-launch telah ditambahkan ke bspwmrc."
     else
-        warn "config directory not found. Skipping."
+        warn "bspwmrc tidak ditemukan, buat manual nanti."
     fi
 
-    # 2. Fonts
-    if [[ -d "$SCRIPT_DIR/fonts" ]]; then
-        cp -r "$SCRIPT_DIR/fonts/"* "$FONTS_DIR/"
-        info "Fonts copied to $FONTS_DIR"
-        # Update font cache
-        fc-cache -fv "$FONTS_DIR" >/dev/null
-    else
-        warn "fonts directory not found. Skipping."
+    # Picom: pastikan backend xrender (stabil)
+    local picom_conf="$CONFIG_DIR/picom/picom.conf"
+    if [[ -f "$picom_conf" ]]; then
+        sed -i 's/^backend = "glx"/backend = "xrender"/' "$picom_conf" 2>/dev/null || true
     fi
 
-    # 3. Icons
-    if [[ -d "$SCRIPT_DIR/icons" ]]; then
-        cp -r "$SCRIPT_DIR/icons/"* "$ICONS_DIR/"
-        info "Icons copied to $ICONS_DIR"
-    else
-        warn "icons directory not found. Skipping."
-    fi
-
-    # 4. Themes
-    if [[ -d "$SCRIPT_DIR/themes" ]]; then
-        cp -r "$SCRIPT_DIR/themes/"* "$THEMES_DIR/"
-        info "Themes copied to $THEMES_DIR"
-    else
-        warn "themes directory not found. Skipping."
-    fi
-
-    # 5. Other user configs (pipewire scripts, bashrc)
-    if [[ -d "$SCRIPT_DIR/other/pipewire" ]]; then
-        cp -r "$SCRIPT_DIR/other/pipewire"/* "$LOCAL_BIN_DIR/"
-        chmod +x "$LOCAL_BIN_DIR"/* 2>/dev/null || true
-        info "PipeWire helper scripts copied to $LOCAL_BIN_DIR"
-    fi
-
-    if [[ -f "$SCRIPT_DIR/other/.bashrc" ]]; then
-        cp "$SCRIPT_DIR/other/.bashrc" "$HOME_DIR/"
-        info "Custom .bashrc copied"
-    fi
-
-    # 6. System-wide configurations (need sudo)
-    if [[ -d "$SCRIPT_DIR/other/xorg.conf.d" ]]; then
-        sudo cp -r "$SCRIPT_DIR/other/xorg.conf.d" /etc/X11/
-        info "Xorg configuration copied to /etc/X11/xorg.conf.d"
-    fi
-
-    if [[ -f "$SCRIPT_DIR/other/resolv.conf" ]]; then
-        sudo cp "$SCRIPT_DIR/other/resolv.conf" /etc/
-        info "resolv.conf copied to /etc"
-    fi
-
-    if [[ -d "$SCRIPT_DIR/other/root" ]]; then
-        sudo cp -r "$SCRIPT_DIR/other/root/.bashrc" /root/ 2>/dev/null || true
-        info "Root .bashrc copied"
-    fi
-
-    success "All dotfiles deployed."
+    success "Dotfiles selesai disalin dan dimodifikasi."
 }
 
 # -----------------------------------------------------------------------------
-# Enable system services using runit
+# Aktifkan layanan runit
 # -----------------------------------------------------------------------------
 setup_services() {
-    info "Enabling system services..."
-
-    local services=(
-        dbus
-        elogind
-        NetworkManager
-        lightdm
-        rtkit
-        polkit
-    )
-
+    info "Mengaktifkan layanan sistem..."
+    local services=(dbus elogind NetworkManager lightdm rtkit polkit)
     for svc in "${services[@]}"; do
         if [[ -d "/etc/sv/$svc" ]]; then
-            if [[ ! -L "/var/service/$svc" ]]; then
-                sudo ln -s "/etc/sv/$svc" /var/service/
-                info "Service $svc enabled"
-            else
-                info "Service $svc already enabled"
-            fi
+            [[ ! -L "/var/service/$svc" ]] && sudo ln -s "/etc/sv/$svc" /var/service/ && info "$svc diaktifkan"
         else
-            warn "Service directory for $svc not found in /etc/sv"
+            warn "Layanan $svc tidak ditemukan."
         fi
     done
-
-    success "Services enabled."
+    success "Layanan diaktifkan."
 }
 
 # -----------------------------------------------------------------------------
-# Additional system configurations (polkit, udev, groups)
+# Konfigurasi tambahan (polkit, udev, group)
 # -----------------------------------------------------------------------------
 setup_additional() {
-    info "Applying additional system tweaks..."
+    info "Menambahkan konfigurasi tambahan..."
 
-    # 1. Polkit rule for power management
+    # Polkit rule
     sudo mkdir -p /etc/polkit-1/rules.d
-    cat | sudo tee /etc/polkit-1/rules.d/10-bspwm.rules >/dev/null << 'EOF'
+    sudo tee /etc/polkit-1/rules.d/10-bspwm.rules >/dev/null << 'EOF'
 polkit.addRule(function(action, subject) {
     if ((action.id == "org.freedesktop.login1.reboot" ||
          action.id == "org.freedesktop.login1.power-off" ||
@@ -390,37 +288,61 @@ polkit.addRule(function(action, subject) {
     }
 });
 EOF
-    info "Polkit rule added for wheel group"
 
-    # 2. Ensure user is in necessary groups (already in audio,video from pipewire, but add more)
+    # Groups
     sudo usermod -a -G audio,video,input,disk,wheel "$USER"
-    info "User added to audio,video,input,disk,wheel groups"
 
-    # 3. udev rule for backlight control
+    # Backlight udev
     if [[ ! -w /sys/class/backlight/*/brightness ]] 2>/dev/null; then
-        cat | sudo tee /etc/udev/rules.d/90-backlight.rules >/dev/null << 'EOF'
+        sudo tee /etc/udev/rules.d/90-backlight.rules >/dev/null << 'EOF'
 ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness"
 ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"
 EOF
-        info "Backlight udev rule added"
     fi
 
-    # 4. Configure NetworkManager not to manage resolv.conf (if we provided our own)
+    # NetworkManager resolv.conf
     if [[ -f /etc/resolv.conf ]]; then
         sudo mkdir -p /etc/NetworkManager/conf.d
         echo -e "[main]\nrc-manager=unmanaged" | sudo tee /etc/NetworkManager/conf.d/rc-manager.conf >/dev/null
-        info "NetworkManager configured not to manage resolv.conf"
     fi
 
-    success "Additional setup complete."
+    success "Konfigurasi tambahan selesai."
 }
 
 # -----------------------------------------------------------------------------
-# Main function
+# Pesan akhir
+# -----------------------------------------------------------------------------
+final_message() {
+    echo ""
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║         INSTALASI BSPWM PADA VOID LINUX SELESAI         ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}‼️  LANGKAH PALING PENTING ‼️${NC}"
+    echo -e "   ${CYAN}1. LOGOUT dari sesi saat ini (atau reboot).${NC}"
+    echo -e "   ${CYAN}2. LOGIN kembali agar semua perubahan grup (dbus, audio, dll)生效.${NC}"
+    echo ""
+    echo -e "${BLUE}Setelah login:${NC}"
+    echo -e "  • Cek D-Bus session:  ${CYAN}echo \$DBUS_SESSION_BUS_ADDRESS${NC}"
+    echo -e "    Seharusnya terisi alamat seperti 'unix:path=/run/user/1000/bus'"
+    echo -e "  • Jika kosong, kemungkinan display manager tidak memulai dbus."
+    echo -e "    Namun bspwmrc sudah menyertakan fallback 'dbus-launch'."
+    echo ""
+    echo -e "  • Jalankan terminal (Alacritty / xfce4-terminal). Jika masih gagal,"
+    echo -e "    buka TTY (Ctrl+Alt+F2) dan periksa log:"
+    echo -e "    ${CYAN}tail -f ~/.config/bspwm/autostart.log${NC}"
+    echo ""
+    echo -e "  • Polybar seharusnya berjalan. Cek dengan: ${CYAN}pgrep polybar${NC}"
+    echo -e "  • Jika tidak jalan, coba manual: ${CYAN}~/.config/polybar/launch.sh${NC}"
+    echo ""
+    echo -e "${GREEN}Terima kasih telah menggunakan script ini.${NC}"
+}
+
+# -----------------------------------------------------------------------------
+# Main
 # -----------------------------------------------------------------------------
 main() {
-    info "Starting BSPWM installation for Void Linux..."
-
+    info "Memulai instalasi BSPWM untuk Void Linux (fokus D-Bus)..."
     install_packages
     setup_dbus
     create_user_dirs
@@ -429,11 +351,7 @@ main() {
     setup_services
     setup_additional
     setup_betterlockscreen
-
-    success "Installation finished!"
-    echo -e "${CYAN}Please reboot or restart your session to apply all changes.${NC}"
-    echo -e "${YELLOW}Note: You may need to log out and back in for group changes to take effect.${NC}"
+    final_message
 }
 
-# Run main function
 main
