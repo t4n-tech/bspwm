@@ -35,7 +35,7 @@ where:
     -p  preferred launcher (rofi or zenity)
 
 This script depends on:
-  - systemd,
+  - elogind (loginctl),
   - i3/bspwm,
   - rofi or zenity."
 
@@ -75,24 +75,24 @@ function command_exists() {
   command -v "$1" &> /dev/null 2>&1
 }
 
-# systemctl required
-if ! command_exists systemctl ; then
+# For Void Linux with elogind, we use loginctl
+if ! command_exists loginctl ; then
+  echo "loginctl not found. Make sure elogind is installed."
   exit 1
 fi
 
 # menu defined as an associative array
 typeset -A menu
 
-# Menu with keys/commands
-
+# Menu with keys/commands using loginctl (elogind)
 menu=(
-  [⏻   Shutdown]="systemctl poweroff"
-  [↻   Reboot]="systemctl reboot"
-  [    Suspend]="~/.config/bspwm/utility/scripts/powermenu-suspend"
-  [     Hibernate]="systemctl hibernate"
-  [     Lock]="~/.config/bspwm/utility/scripts/lock"
+  [⏻   Shutdown]="loginctl poweroff"
+  [↻   Reboot]="loginctl reboot"
+  [   Suspend]="~/.config/bspwm/utility/scripts/powermenu-suspend"
+  [    Hibernate]="loginctl hibernate"
+  [    Lock]="~/.config/bspwm/utility/scripts/lock"
   [↪    Logout]="bspc quit"
-  [     Cancel]=""
+  [    Cancel]=""
 )
 
 menu_nrows=${#menu[@]}

@@ -52,11 +52,11 @@ PACKAGES_BASE=(
     xorg
     bspwm sxhkd
     rofi picom polybar alacritty dmenu feh
-    network-manager-applet
+    network-manager-applet chromium
     Thunar gvfs gvfs-mtp thunar-archive-plugin thunar-media-tags-plugin
-    brightnessctl
-    playerctl lm_sensors htop btop fastfetch
-    firefox flameshot galculator geany timeshift
+    brightnessctl xss-lock xfce4-terminal fontconfig
+    playerctl lm_sensors htop btop fastfetch betterlockscreen
+    i3lock-color xrdb firefox flameshot galculator geany timeshift
     lxappearance papirus-icon-theme gtk-engine-murrine arc-theme
     font-awesome nerd-fonts dejavu-fonts-ttf noto-fonts-ttf noto-fonts-cjk
 )
@@ -74,7 +74,7 @@ PACKAGES_SERVICES=(
     NetworkManager
     lightdm
     rtkit
-    polkit      # corrected name
+    polkit
 )
 
 # Combine all packages
@@ -262,6 +262,14 @@ setup_pipewire() {
     success "PipeWire setup completed."
 }
 
+# ----------------------------------------------------------------------------
+# Betterlockscreen Setup
+# ----------------------------------------------------------------------------
+setup_betterlockscreen() {
+    info "Configuring Betterlockscreen..."
+    betterlockscreen -u ~/.config/bspwm/wallpaper/Sinon-2.jpg --blur 0.8
+}
+
 # -----------------------------------------------------------------------------
 # Copy dotfiles to their destinations
 # -----------------------------------------------------------------------------
@@ -420,6 +428,7 @@ main() {
     copy_dotfiles
     setup_services
     setup_additional
+    setup_betterlockscreen
 
     success "Installation finished!"
     echo -e "${CYAN}Please reboot or restart your session to apply all changes.${NC}"

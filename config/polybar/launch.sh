@@ -1,184 +1,75 @@
 #!/bin/bash
-# Config Polybar For Multi-Monitor with Auto-Detection
+# Polybar launcher with multi-monitor auto-detection
 
-# ============================================
-# SECTION 1: TERMINATE EXISTING POLYBAR
-# ============================================
+CONFIG_DIR="$HOME/.config/polybar"
+CONFIG="$CONFIG_DIR/config.ini"
+SYSTEM_INI="$CONFIG_DIR/system.ini"
+DETECT_SCRIPT="$CONFIG_DIR/detection.sh"
 
-# Turn off all polybars that are still running
+# Kill existing polybar instances
 killall -q polybar
+while pgrep -u "$UID" -x polybar >/dev/null; do sleep 0.5; done
 
-# Wait until the polybar process is completely dead
-while pgrep -u $UID -x polybar >/dev/null; do 
-    sleep 0.5
-done
+# Ensure detection script exists and is executable
+if [[ ! -x "$DETECT_SCRIPT" ]]; then
+    echo "Making detection script executable..."
+    chmod +x "$DETECT_SCRIPT" 2>/dev/null || { echo "Detection script missing"; exit 1; }
+fi
 
-echo "✅ polybar has been discontinued"
-
-# ============================================
-# SECTION 2: CONFIGURATION PATHS
-# ============================================
-
-POLYBAR_DIR="$HOME/.config/polybar"
-AUTO_DETECT_SCRIPT="$POLYBAR_DIR/detection.sh"
-SYSTEM_INI="$POLYBAR_DIR/system.ini"
-CONFIG="$POLYBAR_DIR/config.ini"
-
-# ============================================
-# SECTION 3: SYSTEM DETECTION & VERIFICATION
-# ============================================
-
-echo "🔍 Running automatic system detection..."
-
-# Function to run detection script
-run_detection() {
-    local mode="${1:---quick}"
-    
-    echo "📦 Running system detection ($mode)..."
-    
-    # Check if detection script exists
-    if [ ! -f "$AUTO_DETECT_SCRIPT" ]; then
-        echo "❌ Detection script not found: $AUTO_DETECT_SCRIPT"
-        return 1
-    fi
-    
-    # Ensure script is executable
-    if [ ! -x "$AUTO_DETECT_SCRIPT" ]; then
-        echo "🔧 Making script executable..."
-        if ! chmod +x "$AUTO_DETECT_SCRIPT"; then
-            echo "❌ Failed to make script executable"
-            return 1
-        fi
-    fi
-    
-    # Run detection
-    if "$AUTO_DETECT_SCRIPT" "$mode"; then
-        echo "✅ System detection completed successfully"
-        return 0
-    else
-        echo "❌ System detection failed"
-        return 1
-    fi
-}
-
-# LOGIKA PERBAIKAN BERDASARKAN PERMINTAAN:
-# 1. Jika system.ini TIDAK ada, jalankan detection.sh --force
-# 2. Jika system.ini ada, jalankan detection.sh --quick (hanya update jika perlu)
-# 3. Jika keduanya sudah ada, lanjut tanpa perubahan
-
-if [ ! -f "$SYSTEM_INI" ]; then
-    echo "⚠️  system.ini not found, running full detection..."
-    if ! run_detection --force; then
-        echo "❌ Cannot continue without system.ini"
-        exit 1
-    fi
+# Run detection: force if system.ini missing, otherwise quick
+if [[ ! -f "$SYSTEM_INI" ]]; then
+    echo "No system.ini found, running full detection..."
+    "$DETECT_SCRIPT" --force || exit 1
 else
-    echo "📝 System configuration found, running quick check..."
-    run_detection --quick
+    echo "Running quick system check..."
+    "$DETECT_SCRIPT" --quick
 fi
 
-# Final verification of system.ini (Wajib ada untuk melanjutkan)
-if [ ! -f "$SYSTEM_INI" ]; then
-    echo "❌ CRITICAL: system.ini still not found after detection!"
-    echo "   Check: $POLYBAR_DIR/auto-detect.log for errors"
-    exit 1
-fi
+# Verify system.ini exists
+[[ -f "$SYSTEM_INI" ]] || { echo "system.ini still missing"; exit 1; }
 
-echo "✅ System configuration verified: $SYSTEM_INI"
-
-# ============================================
-# SECTION 4: MONITOR DETECTION & POLYBAR LAUNCH
-# ============================================
-
-echo "🖥️  Detecting monitors..."
-
-# Check if xrandr is available
-if ! command -v xrandr &> /dev/null; then
-    echo "⚠️  xrandr not found, using default monitor"
+# Detect monitors with xrandr
+if command -v xrandr &>/dev/null; then
+    primary=$(xrandr --query | awk '/ connected.*primary/ {print $1}')
+    connected=$(xrandr --query | awk '/ connected/ {print $1}')
+else
+    echo "xrandr not found, launching on default monitor"
     polybar -c "$CONFIG" --reload main &
-    echo "✅ Polybar runs on the default monitor"
-else
-    # Primary monitor detection
-    PRIMARY=$(xrandr --query | awk '/ connected.*primary/ {print $1}' 2>/dev/null)
-    
-    if [ -n "$PRIMARY" ]; then
-        echo "📺 Primary monitor: $PRIMARY"
-        MONITOR=$PRIMARY polybar -c "$CONFIG" --reload main &
-        echo "✅ Polybar launched on primary monitor: $PRIMARY"
-        
-        # Also run on non-primary monitors
-        NON_PRIMARY=$(xrandr --query | awk '/ connected/ && !/primary/ {print $1}' 2>/dev/null)
-        if [ -n "$NON_PRIMARY" ]; then
-            for MON in $NON_PRIMARY; do
-                echo "📺 Additional monitor: $MON"
-                MONITOR=$MON polybar -c "$CONFIG" --reload secondary &
-                sleep 0.3
-            done
-            echo "✅ Polybar launched on additional monitors"
-        fi
-    else
-        # Fallback: use all connected monitors
-        CONNECTED=$(xrandr --query | awk '/ connected/ {print $1}' 2>/dev/null)
-        if [ -n "$CONNECTED" ]; then
-            echo "📺 Connected monitors: $(echo $CONNECTED | tr '\n' ' ')"
-            
-            # First monitor as main
-            FIRST=$(echo "$CONNECTED" | head -n1)
-            echo "📺 Using as main: $FIRST"
-            MONITOR=$FIRST polybar -c "$CONFIG" --reload main &
-            
-            # Rest as secondary
-            OTHERS=$(echo "$CONNECTED" | tail -n +2)
-            for MON in $OTHERS; do
-                echo "📺 Additional monitor: $MON"
-                MONITOR=$MON polybar -c "$CONFIG" --reload secondary &
-                sleep 0.3
-            done
-        else
-            echo "⚠️  No monitors detected via xrandr"
-            polybar -c "$CONFIG" --reload main &
-        fi
-    fi
+    exit 0
 fi
 
-# ============================================
-# SECTION 5: VERIFICATION
-# ============================================
-
-echo ""
-echo "⏳ Waiting for polybar to start..."
-
-# Give polybar time to start
-sleep 2
-
-# Count running polybar instances
-POLYBAR_COUNT=$(pgrep -u $UID -c polybar 2>/dev/null || echo 0)
-
-if [ "$POLYBAR_COUNT" -gt 0 ]; then
-    echo ""
-    echo "========================================"
-    echo "✅ POLYBAR SUCCESSFULLY LAUNCHED!"
-    echo "========================================"
-    echo "Config file:    $CONFIG"
-    echo "System config:  $SYSTEM_INI"
-    echo "Running instances: $POLYBAR_COUNT"
-    echo ""
-    echo "For logs:"
-    echo "  tail -f $POLYBAR_DIR/auto-detect.log"
-    echo ""
-    echo "For re-detection:"
-    echo "  $AUTO_DETECT_SCRIPT --force"
-    echo ""
-    echo "To kill polybar:"
-    echo "  pkill polybar"
+# Launch polybar on each monitor
+if [[ -n "$primary" ]]; then
+    echo "Primary: $primary"
+    MONITOR=$primary polybar -c "$CONFIG" --reload main &
+    sleep 0.3
+    # Launch secondary on other monitors
+    for mon in $connected; do
+        [[ "$mon" == "$primary" ]] && continue
+        echo "Secondary: $mon"
+        MONITOR=$mon polybar -c "$CONFIG" --reload secondary &
+        sleep 0.3
+    done
 else
-    echo ""
-    echo "❌ FAILED to launch Polybar!"
-    echo ""
-    echo "Troubleshooting:"
-    echo "1. Check config: $CONFIG"
-    echo "2. Check logs: journalctl -xe | grep polybar"
-    echo "3. Run detection manually: $AUTO_DETECT_SCRIPT --force"
-    echo "4. Test polybar manually: polybar -c \"$CONFIG\" main"
+    # No primary, treat first as main, rest as secondary
+    set -- $connected
+    main=$1; shift
+    echo "Main: $main"
+    MONITOR=$main polybar -c "$CONFIG" --reload main &
+    sleep 0.3
+    for mon; do
+        echo "Secondary: $mon"
+        MONITOR=$mon polybar -c "$CONFIG" --reload secondary &
+        sleep 0.3
+    done
+fi
+
+# Verify launch
+sleep 1
+count=$(pgrep -u "$UID" -c polybar)
+if (( count > 0 )); then
+    echo "Polybar launched ($count instances)"
+else
+    echo "Failed to launch polybar"
     exit 1
 fi

@@ -11,9 +11,6 @@ HLBG_COLOR="#bbbbbb"
 BORDER_COLOR="#222222"
 
 # Options not related to colors
-#ROFI_TEXT=":"
-#ROFI_OPTIONS=(-width -11 -location 0 -hide-scrollbar -bw 30 -color-window "#dd310027,#dd0310027,#dd310027" -padding 5)
-#ROFI_OPTIONS=(-width -18 -location 4 -hide-scrollbar -color-window "#cc310027,#00a0009a,#cc310027" -padding 5 -font "Sourcecode Pro Regular 10, FontAwesome 9")
 ROFI_OPTIONS=(-theme ~/.config/rofi/profil.rasi)
 # Zenity options
 ZENITY_TITLE="Power Profiles"
@@ -30,7 +27,7 @@ enable_confirmation=false
 # Preferred launcher if both are available
 preferred_launcher="rofi"
 
-usage="$(basename "$0") [-h] [-c] [-p name] -- display a menu for shutdown, reboot, lock etc.
+usage="$(basename "$0") [-h] [-c] [-p name] -- display a menu to set power profiles.
 
 where:
     -h  show this help text
@@ -38,8 +35,7 @@ where:
     -p  preferred launcher (rofi or zenity)
 
 This script depends on:
-  - systemd,
-  - i3/bspwm,
+  - powerprofilesctl (from power-profiles-daemon),
   - rofi or zenity."
 
 # Check whether the user-defined launcher is valid
@@ -50,7 +46,6 @@ function check_launcher() {
     exit 1
   else
     # Get array with unique elements and preferred launcher first
-    # Note: uniq expects a sorted list, so we cannot use it
     i=1
     launcher_list=($(for l in "$1" "${launcher_list[@]}"; do printf "%i %s\n" "$i" "$l"; let i+=1; done \
       | sort -uk2 | sort -nk1 | cut -d' ' -f2- | tr '\n' ' '))
@@ -78,15 +73,14 @@ function command_exists() {
   command -v "$1" &> /dev/null 2>&1
 }
 
-# systemctl required
-if ! command_exists systemctl ; then
+# powerprofilesctl required (from power-profiles-daemon)
+if ! command_exists powerprofilesctl ; then
+  echo "powerprofilesctl not found. Please install power-profiles-daemon."
   exit 1
 fi
 
 # default_menu_options defined as an associative array
 typeset -A default_menu_options
-
-# The default options with keys/commands
 
 default_menu_options=(
   [  Performance]="powerprofilesctl set performance"
@@ -99,7 +93,7 @@ default_menu_options=(
 typeset -A menu
 menu=()
 
-# Only add power profiles that are available to menu
+# Only add power profiles that are available
 for key in "${!default_menu_options[@]}"; do
   grep_arg=${default_menu_options[${key}]##* }
   if powerprofilesctl list | grep -q "$grep_arg"; then
@@ -111,7 +105,7 @@ unset default_menu_options
 
 menu_nrows=${#menu[@]}
 
-# Menu entries that may trigger a confirmation message
+# Menu entries that may trigger a confirmation message (not used here, but kept for compatibility)
 menu_confirm="Shutdown Reboot Hibernate Suspend Halt Logout"
 
 launcher_exe=""

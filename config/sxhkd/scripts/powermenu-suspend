@@ -7,5 +7,5 @@ betterlockscreen -l &
 sleep 1
 
 # Masuk mode suspend
-systemctl suspend
+loginctl suspend
 
