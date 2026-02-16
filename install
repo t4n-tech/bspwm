@@ -52,7 +52,7 @@ PACKAGES_BASE=(
     xorg
     bspwm sxhkd
     rofi picom polybar alacritty dmenu feh
-    network-manager-applet chromium
+    network-manager-applet chromium xterm
     Thunar gvfs gvfs-mtp thunar-archive-plugin thunar-media-tags-plugin
     brightnessctl xss-lock xfce4-terminal fontconfig
     playerctl lm_sensors htop btop fastfetch betterlockscreen
