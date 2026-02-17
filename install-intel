@@ -1,0 +1,350 @@
+#!/usr/bin/env bash
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
+
+if [[ $EUID -eq 0 ]]; then
+    error "Do not run this script as root. Run it as a normal user."
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOME_DIR="$HOME"
+CONFIG_DIR="$HOME_DIR/.config"
+FONTS_DIR="$HOME_DIR/.fonts"
+ICONS_DIR="$HOME_DIR/.icons"
+THEMES_DIR="$HOME_DIR/.themes"
+
+mkdir -p "$CONFIG_DIR" "$FONTS_DIR" "$ICONS_DIR" "$THEMES_DIR"
+
+PACKAGES_BASE=(
+    # Xorg
+    xorg
+    xf86-input-libinput
+
+    # WM
+    bspwm
+    sxhkd
+
+    # Graphics (Intel)
+    mesa
+    mesa-dri
+    mesa-vulkan-intel
+    vulkan-tools
+    linux-firmware
+
+    # Network
+    network-manager-applet
+
+    # Terminal & Launcher
+    alacritty
+    xfce4-terminal
+    rofi
+    dmenu
+
+    # Panel & Compositor
+    polybar
+    picom
+
+    # File Manager
+    Thunar
+    gvfs
+    gvfs-mtp
+    thunar-archive-plugin
+    thunar-media-tags-plugin
+
+    # Utilities
+    feh
+    brightnessctl
+    xss-lock
+    betterlockscreen
+    i3lock-color
+    xrdb
+    xdg-user-dirs
+
+    # Monitoring
+    lm_sensors
+    htop
+    btop
+    fastfetch
+    playerctl
+
+    # Apps
+    firefox
+    chromium
+    flameshot
+    galculator
+    geany
+    timeshift
+    xmirror
+
+    # Theming
+    lxappearance
+    papirus-icon-theme
+    gtk-engine-murrine
+    arc-theme
+    fontconfig
+
+    # Fonts
+    font-awesome
+    nerd-fonts
+    dejavu-fonts-ttf
+    noto-fonts-ttf
+    noto-fonts-cjk
+)
+
+
+PACKAGES_PIPEWIRE=(
+    pipewire wireplumber
+    libspa-bluetooth
+    alsa-pipewire
+    libjack-pipewire
+    pavucontrol pamixer
+)
+
+PACKAGES_SERVICES=(
+    dbus
+    elogind
+    NetworkManager
+    lightdm
+    rtkit
+    polkit
+)
+
+PACKAGES_ALL=(
+    "${PACKAGES_BASE[@]}"
+    "${PACKAGES_PIPEWIRE[@]}"
+    "${PACKAGES_SERVICES[@]}"
+)
+
+install_packages() {
+    info "Updating the system and installing packages..."
+
+    sudo xbps-install -Su xbps || { error "Failed to update xbps"; exit 1; }
+    sudo xbps-install -y void-repo-multilib void-repo-multilib-nonfree void-repo-nonfree 2>/dev/null || warn "Repositori mungkin sudah ada."
+    sudo xbps-install -Su || { error "Failed to update system"; exit 1; }
+
+    for pkg in "${PACKAGES_ALL[@]}"; do
+        if ! xbps-query "$pkg" >/dev/null 2>&1; then
+            info "Menginstal $pkg..."
+            sudo xbps-install -y "$pkg" || warn "Failed to install $pkg"
+        else
+            info "The $pkg package is already installed, skip."
+        fi
+    done
+    success "All packages are complete."
+}
+
+setup_dbus() {
+    info "Mengonfigurasi D-Bus..."
+
+    # Tambahkan user ke grup dbus jika ada
+    if getent group dbus >/dev/null; then
+        if ! groups "$USER" | grep -q dbus; then
+            sudo usermod -a -G dbus "$USER"
+            warn "User added to group 'dbus'. You MUST log out and log back in for this to take effect."
+        fi
+    fi
+
+    # Aktifkan service dbus
+    if [[ -L /var/service/dbus ]]; then
+        if sv status dbus | grep -q run; then
+            info "The dbus service is running."
+        else
+            sudo sv start dbus
+        fi
+    else
+        if [[ -d /etc/sv/dbus ]]; then
+            sudo ln -s /etc/sv/dbus /var/service/
+            info "Service dbus is enabled."
+        else
+            error "The dbus service directory was not found. Is the dbus package installed?"
+        fi
+    fi
+
+    # dumb_runtime_dir untuk XDG_RUNTIME_DIR
+    if ! command -v dumb_runtime_dir >/dev/null 2>&1; then
+        sudo xbps-install -y dumb_runtime_dir
+    fi
+    if ! grep -q "pam_dumb_runtime_dir" /etc/pam.d/system-login 2>/dev/null; then
+        echo "session optional pam_dumb_runtime_dir.so" | sudo tee -a /etc/pam.d/system-login >/dev/null
+    fi
+
+    success "D-Bus configuration complete. (Remember: logout/login after installation!)"
+}
+
+create_user_dirs() {
+    info "Creating a standard user directory..."
+    if command -v xdg-user-dirs-update >/dev/null 2>&1; then
+        xdg-user-dirs-update
+    else
+        mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Pictures" \
+                 "$HOME/Videos" "$HOME/Music" "$HOME/Desktop" \
+                 "$HOME/Templates" "$HOME/Public"
+    fi
+    success "Direktori user siap."
+}
+
+setup_pipewire() {
+    info "Configuring PipeWire..."
+    mkdir -p "$CONFIG_DIR/pipewire/pipewire.conf.d"
+
+    [[ -f /usr/share/examples/wireplumber/10-wireplumber.conf ]] && \
+        ln -sf /usr/share/examples/wireplumber/10-wireplumber.conf "$CONFIG_DIR/pipewire/pipewire.conf.d/"
+    [[ -f /usr/share/examples/pipewire/20-pipewire-pulse.conf ]] && \
+        ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf "$CONFIG_DIR/pipewire/pipewire.conf.d/"
+
+    if [[ -d /usr/share/alsa/alsa.conf.d ]]; then
+        sudo mkdir -p /etc/alsa/conf.d
+        sudo ln -sf /usr/share/alsa/alsa.conf.d/50-pipewire.conf /etc/alsa/conf.d/
+        sudo ln -sf /usr/share/alsa/alsa.conf.d/99-pipewire-default.conf /etc/alsa/conf.d/
+    fi
+
+    if [[ -d /usr/lib/pipewire-0.3/jack ]]; then
+        echo "/usr/lib/pipewire-0.3/jack" | sudo tee /etc/ld.so.conf.d/pipewire-jack.conf >/dev/null
+        sudo ldconfig
+    fi
+
+    mkdir -p "$CONFIG_DIR/autostart"
+    [[ -f /usr/share/applications/pipewire.desktop ]] && \
+        ln -sf /usr/share/applications/pipewire.desktop "$CONFIG_DIR/autostart/"
+    [[ -f /usr/share/applications/pipewire-pulse.desktop ]] && \
+        ln -sf /usr/share/applications/pipewire-pulse.desktop "$CONFIG_DIR/autostart/"
+
+    sudo usermod -a -G audio,video "$USER"
+    success "PipeWire is configured."
+}
+
+setup_betterlockscreen() {
+    info "Setting up Betterlockscreen..."
+    local wallpaper="$HOME/.config/bspwm/wallpaper/Sinon-2.jpg"
+    if [[ -f "$wallpaper" ]]; then
+        betterlockscreen -u "$wallpaper" --blur 0.8
+    else
+        warn "Wallpaper tidak ditemukan, lewati."
+    fi
+}
+
+copy_dotfiles() {
+    info "Copying configuration files..."
+
+    # Salin folder config
+    [[ -d "$SCRIPT_DIR/config" ]] && cp -r "$SCRIPT_DIR/config/"* "$CONFIG_DIR/"
+
+    # Font, icons, themes
+    [[ -d "$SCRIPT_DIR/fonts" ]] && cp -r "$SCRIPT_DIR/fonts/"* "$FONTS_DIR/" && fc-cache -fv "$FONTS_DIR" >/dev/null
+    [[ -d "$SCRIPT_DIR/icons" ]] && cp -r "$SCRIPT_DIR/icons/"* "$ICONS_DIR/"
+    [[ -d "$SCRIPT_DIR/themes" ]] && cp -r "$SCRIPT_DIR/themes/"* "$THEMES_DIR/"
+
+    # Skrip tambahan
+    [[ -d "$SCRIPT_DIR/other/pipewire" ]] && cp -r "$SCRIPT_DIR/other/pipewire"/* "$CONFIG_DIR/pipewire/" && chmod +x "$CONFIG_DIR/pipewire/"*
+    [[ -f "$SCRIPT_DIR/other/.bashrc" ]] && cp "$SCRIPT_DIR/other/.bashrc" "$HOME_DIR/"
+
+    # Konfigurasi sistem
+    [[ -d "$SCRIPT_DIR/other/xorg.conf.d" ]] && sudo cp -r "$SCRIPT_DIR/other/xorg.conf.d" /etc/X11/
+    [[ -f "$SCRIPT_DIR/other/resolv.conf" ]] && sudo cp "$SCRIPT_DIR/other/resolv.conf" /etc/
+    [[ -d "$SCRIPT_DIR/other/root" ]] && sudo cp -r "$SCRIPT_DIR/other/root/.bashrc" /root/ 2>/dev/null || true
+
+    success "Dotfiles are finished being copied and modified."
+}
+
+setup_services() {
+    info "Enabling system services..."
+    local services=(dbus elogind NetworkManager lightdm rtkit polkit)
+    for svc in "${services[@]}"; do
+        if [[ -d "/etc/sv/$svc" ]]; then
+            [[ ! -L "/var/service/$svc" ]] && sudo ln -s "/etc/sv/$svc" /var/service/ && info "$svc diaktifkan"
+        else
+            warn "Service $svc not found."
+        fi
+    done
+    success "Service is activated."
+}
+
+setup_additional() {
+    info "Added additional configuration..."
+
+    # Polkit rule
+    sudo mkdir -p /etc/polkit-1/rules.d
+    sudo tee /etc/polkit-1/rules.d/10-bspwm.rules >/dev/null << 'EOF'
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.login1.reboot" ||
+         action.id == "org.freedesktop.login1.power-off" ||
+         action.id == "org.freedesktop.login1.suspend") &&
+        subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
+    # Groups
+    sudo usermod -a -G audio,video,input,disk,wheel "$USER"
+
+    # Backlight udev
+    if [[ ! -w /sys/class/backlight/*/brightness ]] 2>/dev/null; then
+        sudo tee /etc/udev/rules.d/90-backlight.rules >/dev/null << 'EOF'
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness"
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"
+EOF
+    fi
+
+    # NetworkManager resolv.conf
+    if [[ -f /etc/resolv.conf ]]; then
+        sudo mkdir -p /etc/NetworkManager/conf.d
+        echo -e "[main]\nrc-manager=unmanaged" | sudo tee /etc/NetworkManager/conf.d/rc-manager.conf >/dev/null
+    fi
+
+    success "Additional configuration is complete."
+}
+
+final_message() {
+    echo ""
+    echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║     Setup BSPWM on Void Linux By Gh0sT4n     ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}‼️  LANGKAH PALING PENTING ‼️${NC}"
+    echo -e "   ${CYAN}1. LOGOUT dari sesi saat ini (atau reboot).${NC}"
+    echo -e "   ${CYAN}2. LOGIN kembali agar semua perubahan grup (dbus, audio, dll)生效.${NC}"
+    echo ""
+    echo -e "${BLUE}Setelah login:${NC}"
+    echo -e "  • Cek D-Bus session:  ${CYAN}echo \$DBUS_SESSION_BUS_ADDRESS${NC}"
+    echo -e "    Seharusnya terisi alamat seperti 'unix:path=/run/user/1000/bus'"
+    echo -e "  • Jika kosong, kemungkinan display manager tidak memulai dbus."
+    echo -e "    Namun bspwmrc sudah menyertakan fallback 'dbus-launch'."
+    echo ""
+    echo -e "  • Jalankan terminal (Alacritty / xfce4-terminal). Jika masih gagal,"
+    echo -e "    buka TTY (Ctrl+Alt+F2) dan periksa log:"
+    echo -e "    ${CYAN}tail -f ~/.config/bspwm/autostart.log${NC}"
+    echo ""
+    echo -e "  • Polybar seharusnya berjalan. Cek dengan: ${CYAN}pgrep polybar${NC}"
+    echo -e "  • Jika tidak jalan, coba manual: ${CYAN}~/.config/polybar/launch.sh${NC}"
+    echo ""
+    echo -e "${GREEN}Terima kasih telah menggunakan script ini.${NC}"
+}
+
+main() {
+    info "Memulai instalasi BSPWM untuk Void Linux (fokus D-Bus)..."
+    install_packages
+    setup_dbus
+    create_user_dirs
+    setup_pipewire
+    copy_dotfiles
+    setup_services
+    setup_additional
+    setup_betterlockscreen
+    final_message
+}
+
+main

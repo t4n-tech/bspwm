@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
-#
-# install.sh - Automated installation script for BSPWM desktop environment on Void Linux
-# FOKUS UTAMA: Memastikan D-Bus berfungsi dengan benar agar terminal dan polybar dapat berjalan.
-#
 
-set -e  # Exit immediately if a command exits with a non-zero status
+set -e
 
-# -----------------------------------------------------------------------------
-# Color definitions
-# -----------------------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -22,40 +15,95 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 
 if [[ $EUID -eq 0 ]]; then
-    error "Jangan jalankan script ini sebagai root. Jalankan sebagai user biasa."
+    error "Do not run this script as root. Run it as a normal user."
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# Variables
-# -----------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOME_DIR="$HOME"
 CONFIG_DIR="$HOME_DIR/.config"
 FONTS_DIR="$HOME_DIR/.fonts"
 ICONS_DIR="$HOME_DIR/.icons"
 THEMES_DIR="$HOME_DIR/.themes"
-LOCAL_BIN_DIR="$HOME_DIR/.local/bin"
-CACHE_DIR="$HOME_DIR/.cache"
 
-mkdir -p "$CONFIG_DIR" "$FONTS_DIR" "$ICONS_DIR" "$THEMES_DIR" "$LOCAL_BIN_DIR" "$CACHE_DIR"
+mkdir -p "$CONFIG_DIR" "$FONTS_DIR" "$ICONS_DIR" "$THEMES_DIR"
 
-# -----------------------------------------------------------------------------
-# Package lists
-# -----------------------------------------------------------------------------
 PACKAGES_BASE=(
+    # Xorg
     xorg
-    bspwm sxhkd
-    rofi picom polybar alacritty dmenu feh
-    network-manager-applet chromium xmirror
-    Thunar gvfs gvfs-mtp thunar-archive-plugin thunar-media-tags-plugin
-    brightnessctl xss-lock xfce4-terminal fontconfig
-    playerctl lm_sensors htop btop fastfetch betterlockscreen
-    i3lock-color xrdb firefox flameshot galculator geany timeshift
-    lxappearance papirus-icon-theme gtk-engine-murrine arc-theme
-    font-awesome nerd-fonts dejavu-fonts-ttf noto-fonts-ttf noto-fonts-cjk
+    xf86-input-libinput
+
+    # WM
+    bspwm
+    sxhkd
+
+    # Graphics (AMD)
+    mesa
+    mesa-dri
+    mesa-vulkan-radeon
+    vulkan-tools
+    linux-firmware
+
+    # Network
+    network-manager-applet
+
+    # Terminal & Launcher
+    alacritty
+    xfce4-terminal
+    rofi
+    dmenu
+
+    # Panel & Compositor
+    polybar
+    picom
+
+    # File Manager
+    Thunar
+    gvfs
+    gvfs-mtp
+    thunar-archive-plugin
+    thunar-media-tags-plugin
+
+    # Utilities
+    feh
+    brightnessctl
+    xss-lock
+    betterlockscreen
+    i3lock-color
+    xrdb
     xdg-user-dirs
+
+    # Monitoring
+    lm_sensors
+    htop
+    btop
+    fastfetch
+    playerctl
+
+    # Apps
+    firefox
+    chromium
+    flameshot
+    galculator
+    geany
+    timeshift
+    xmirror
+
+    # Theming
+    lxappearance
+    papirus-icon-theme
+    gtk-engine-murrine
+    arc-theme
+    fontconfig
+
+    # Fonts
+    font-awesome
+    nerd-fonts
+    dejavu-fonts-ttf
+    noto-fonts-ttf
+    noto-fonts-cjk
 )
+
 
 PACKAGES_PIPEWIRE=(
     pipewire wireplumber
@@ -80,30 +128,24 @@ PACKAGES_ALL=(
     "${PACKAGES_SERVICES[@]}"
 )
 
-# -----------------------------------------------------------------------------
-# Install packages
-# -----------------------------------------------------------------------------
 install_packages() {
-    info "Memperbarui sistem dan menginstal paket..."
+    info "Updating the system and installing packages..."
 
-    sudo xbps-install -Su xbps || { error "Gagal update xbps"; exit 1; }
+    sudo xbps-install -Su xbps || { error "Failed to update xbps"; exit 1; }
     sudo xbps-install -y void-repo-multilib void-repo-multilib-nonfree void-repo-nonfree 2>/dev/null || warn "Repositori mungkin sudah ada."
-    sudo xbps-install -Su || { error "Gagal update sistem"; exit 1; }
+    sudo xbps-install -Su || { error "Failed to update system"; exit 1; }
 
     for pkg in "${PACKAGES_ALL[@]}"; do
         if ! xbps-query "$pkg" >/dev/null 2>&1; then
             info "Menginstal $pkg..."
-            sudo xbps-install -y "$pkg" || warn "Gagal menginstal $pkg"
+            sudo xbps-install -y "$pkg" || warn "Failed to install $pkg"
         else
-            info "Paket $pkg sudah terinstal, lewati."
+            info "The $pkg package is already installed, skip."
         fi
     done
-    success "Semua paket selesai."
+    success "All packages are complete."
 }
 
-# -----------------------------------------------------------------------------
-# D-Bus: pastikan service berjalan dan user berada di grup dbus
-# -----------------------------------------------------------------------------
 setup_dbus() {
     info "Mengonfigurasi D-Bus..."
 
@@ -111,23 +153,23 @@ setup_dbus() {
     if getent group dbus >/dev/null; then
         if ! groups "$USER" | grep -q dbus; then
             sudo usermod -a -G dbus "$USER"
-            warn "User ditambahkan ke grup 'dbus'. Anda HARUS logout dan login kembali agar efeknya berlaku."
+            warn "User added to group 'dbus'. You MUST log out and log back in for this to take effect."
         fi
     fi
 
     # Aktifkan service dbus
     if [[ -L /var/service/dbus ]]; then
         if sv status dbus | grep -q run; then
-            info "Service dbus sudah berjalan."
+            info "The dbus service is running."
         else
             sudo sv start dbus
         fi
     else
         if [[ -d /etc/sv/dbus ]]; then
             sudo ln -s /etc/sv/dbus /var/service/
-            info "Service dbus diaktifkan."
+            info "Service dbus is enabled."
         else
-            error "Direktori service dbus tidak ditemukan. Apakah paket dbus sudah terinstal?"
+            error "The dbus service directory was not found. Is the dbus package installed?"
         fi
     fi
 
@@ -139,14 +181,11 @@ setup_dbus() {
         echo "session optional pam_dumb_runtime_dir.so" | sudo tee -a /etc/pam.d/system-login >/dev/null
     fi
 
-    success "Konfigurasi D-Bus selesai. (Ingat: logout/login setelah instalasi!)"
+    success "D-Bus configuration complete. (Remember: logout/login after installation!)"
 }
 
-# -----------------------------------------------------------------------------
-# Buat direktori user (Documents, Downloads, dll)
-# -----------------------------------------------------------------------------
 create_user_dirs() {
-    info "Membuat direktori user standar..."
+    info "Creating a standard user directory..."
     if command -v xdg-user-dirs-update >/dev/null 2>&1; then
         xdg-user-dirs-update
     else
@@ -157,11 +196,8 @@ create_user_dirs() {
     success "Direktori user siap."
 }
 
-# -----------------------------------------------------------------------------
-# PipeWire
-# -----------------------------------------------------------------------------
 setup_pipewire() {
-    info "Mengonfigurasi PipeWire..."
+    info "Configuring PipeWire..."
     mkdir -p "$CONFIG_DIR/pipewire/pipewire.conf.d"
 
     [[ -f /usr/share/examples/wireplumber/10-wireplumber.conf ]] && \
@@ -187,14 +223,11 @@ setup_pipewire() {
         ln -sf /usr/share/applications/pipewire-pulse.desktop "$CONFIG_DIR/autostart/"
 
     sudo usermod -a -G audio,video "$USER"
-    success "PipeWire dikonfigurasi."
+    success "PipeWire is configured."
 }
 
-# -----------------------------------------------------------------------------
-# Betterlockscreen
-# -----------------------------------------------------------------------------
 setup_betterlockscreen() {
-    info "Menyiapkan Betterlockscreen..."
+    info "Setting up Betterlockscreen..."
     local wallpaper="$HOME/.config/bspwm/wallpaper/Sinon-2.jpg"
     if [[ -f "$wallpaper" ]]; then
         betterlockscreen -u "$wallpaper" --blur 0.8
@@ -203,11 +236,8 @@ setup_betterlockscreen() {
     fi
 }
 
-# -----------------------------------------------------------------------------
-# Salin dotfiles dan lakukan penyesuaian kritis (D-Bus di bspwmrc)
-# -----------------------------------------------------------------------------
 copy_dotfiles() {
-    info "Menyalin file konfigurasi..."
+    info "Copying configuration files..."
 
     # Salin folder config
     [[ -d "$SCRIPT_DIR/config" ]] && cp -r "$SCRIPT_DIR/config/"* "$CONFIG_DIR/"
@@ -218,7 +248,7 @@ copy_dotfiles() {
     [[ -d "$SCRIPT_DIR/themes" ]] && cp -r "$SCRIPT_DIR/themes/"* "$THEMES_DIR/"
 
     # Skrip tambahan
-    [[ -d "$SCRIPT_DIR/other/pipewire" ]] && cp -r "$SCRIPT_DIR/other/pipewire"/* "$LOCAL_BIN_DIR/" && chmod +x "$LOCAL_BIN_DIR/"*
+    [[ -d "$SCRIPT_DIR/other/pipewire" ]] && cp -r "$SCRIPT_DIR/other/pipewire"/* "$CONFIG_DIR/pipewire/" && chmod +x "$CONFIG_DIR/pipewire/"*
     [[ -f "$SCRIPT_DIR/other/.bashrc" ]] && cp "$SCRIPT_DIR/other/.bashrc" "$HOME_DIR/"
 
     # Konfigurasi sistem
@@ -226,55 +256,24 @@ copy_dotfiles() {
     [[ -f "$SCRIPT_DIR/other/resolv.conf" ]] && sudo cp "$SCRIPT_DIR/other/resolv.conf" /etc/
     [[ -d "$SCRIPT_DIR/other/root" ]] && sudo cp -r "$SCRIPT_DIR/other/root/.bashrc" /root/ 2>/dev/null || true
 
-    # -------------------------------------------------------------------------
-    # PERBAIKAN UTAMA: Pastikan bspwmrc menjalankan dbus-launch jika session belum ada
-    # -------------------------------------------------------------------------
-    local bspwmrc="$CONFIG_DIR/bspwm/bspwmrc"
-    if [[ -f "$bspwmrc" ]]; then
-        # Hapus baris dbus-launch lama jika ada (agar tidak dobel)
-        sed -i '/dbus-launch/d' "$bspwmrc"
-        # Tambahkan di awal (setelah shebang)
-        sed -i '2 i\
-# Inisialisasi session D-Bus jika belum ada (krusial untuk terminal & polybar)\
-if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then\
-    eval "$(dbus-launch --sh-syntax --exit-with-session)"\
-fi\
-' "$bspwmrc"
-        info "Baris dbus-launch telah ditambahkan ke bspwmrc."
-    else
-        warn "bspwmrc tidak ditemukan, buat manual nanti."
-    fi
-
-    # Picom: pastikan backend xrender (stabil)
-    local picom_conf="$CONFIG_DIR/picom/picom.conf"
-    if [[ -f "$picom_conf" ]]; then
-        sed -i 's/^backend = "glx"/backend = "xrender"/' "$picom_conf" 2>/dev/null || true
-    fi
-
-    success "Dotfiles selesai disalin dan dimodifikasi."
+    success "Dotfiles are finished being copied and modified."
 }
 
-# -----------------------------------------------------------------------------
-# Aktifkan layanan runit
-# -----------------------------------------------------------------------------
 setup_services() {
-    info "Mengaktifkan layanan sistem..."
+    info "Enabling system services..."
     local services=(dbus elogind NetworkManager lightdm rtkit polkit)
     for svc in "${services[@]}"; do
         if [[ -d "/etc/sv/$svc" ]]; then
             [[ ! -L "/var/service/$svc" ]] && sudo ln -s "/etc/sv/$svc" /var/service/ && info "$svc diaktifkan"
         else
-            warn "Layanan $svc tidak ditemukan."
+            warn "Service $svc not found."
         fi
     done
-    success "Layanan diaktifkan."
+    success "Service is activated."
 }
 
-# -----------------------------------------------------------------------------
-# Konfigurasi tambahan (polkit, udev, group)
-# -----------------------------------------------------------------------------
 setup_additional() {
-    info "Menambahkan konfigurasi tambahan..."
+    info "Added additional configuration..."
 
     # Polkit rule
     sudo mkdir -p /etc/polkit-1/rules.d
@@ -306,17 +305,14 @@ EOF
         echo -e "[main]\nrc-manager=unmanaged" | sudo tee /etc/NetworkManager/conf.d/rc-manager.conf >/dev/null
     fi
 
-    success "Konfigurasi tambahan selesai."
+    success "Additional configuration is complete."
 }
 
-# -----------------------------------------------------------------------------
-# Pesan akhir
-# -----------------------------------------------------------------------------
 final_message() {
     echo ""
-    echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║         INSTALASI BSPWM PADA VOID LINUX SELESAI         ║${NC}"
-    echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║     Setup BSPWM on Void Linux By Gh0sT4n     ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${YELLOW}‼️  LANGKAH PALING PENTING ‼️${NC}"
     echo -e "   ${CYAN}1. LOGOUT dari sesi saat ini (atau reboot).${NC}"
@@ -338,9 +334,6 @@ final_message() {
     echo -e "${GREEN}Terima kasih telah menggunakan script ini.${NC}"
 }
 
-# -----------------------------------------------------------------------------
-# Main
-# -----------------------------------------------------------------------------
 main() {
     info "Memulai instalasi BSPWM untuk Void Linux (fokus D-Bus)..."
     install_packages

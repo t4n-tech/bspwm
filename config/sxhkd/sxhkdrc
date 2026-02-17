@@ -35,12 +35,12 @@ super + w
 #     google-chrome-stable
 
 # Discord
-super + shift + d
-    discord
+# super + shift + d
+#     discord
 
 # Telegram
-super + t
-    telegram-desktop
+# super + t
+#     telegram-desktop
 
 # == Utility ==
 # ==Screenshot GUI==

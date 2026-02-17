@@ -2,44 +2,24 @@
 
 Script ini digunakan untuk **menginstall dan mengkonfigurasi dotfiles BSPWM secara otomatis** di **Void Linux**.
 
-Konfigurasi sudah termasuk:
 
-* BSPWM
-* SXHKD
-* Polybar
-* Picom
-* Dunst
-* Rofi
-* Alacritty
-* GTK Themes (Everforest & TokyoNight)
-* Nerd Fonts(FiraCode, IosevkaTearm, JetbrainsMono & NerdFontsSymbolsOnly)
-* Pipewire Helper Scripts
-
-## 🚀 Cara Install
+## Cara Install
 
 Clone repository:
 
 ```bash
 git clone https://github.com/t4n-tech/bspwm.git
 cd bspwm
-chmod +x install
-./install
 ```
 
-Script akan otomatis:
-
-1. Update system
-2. Install dependency yang dibutuhkan
-3. Copy dotfiles ke `~/.config`
-4. Install fonts ke `~/.local/share/fonts`
-5. Copy themes ke `~/.themes`
-6. Copy icons ke `~/.icons`
-7. Set permission script
-8. Enable service jika diperlukan
+```
+install-intel  →  intel
+install-amd    →  amd
+```
 
 ---
 
-## 📁 Struktur Project
+## Struktur Project
 
 ```
 config/        → Semua konfigurasi utama
@@ -52,120 +32,66 @@ install        → Script auto installer
 
 ---
 
-## 🛠 Package yang Diinstall
+## Default Keybind (sxhkd)
 
-Script akan menginstall package berikut menggunakan `xbps-install`:
+### Applications & Utilities
 
-```bash
-# Core Package
-xorg bspwm sxhkd rofi picom polybar alacritty dmenu feh
-network-manager-applet Thunar gvfs gvfs-mtp thunar-archive-plugin
-thunar-media-tags-plugin brightnessctl xss-lock xfce4-terminal
-playerctl lm_sensors htop btop fastfetch firefox chromium flameshot 
-galculator geany timeshift lxappearance papirus-icon-theme 
-gtk-engine-murrine arc-theme font-awesome nerd-fonts
-dejavu-fonts-ttf noto-fonts-ttf noto-fonts-cjk fontconfig
-betterlockscreen i3lock-color xrdb
-
-# PipeWire Package
-pipewire wireplumber libspa-bluetooth alsa-pipewire
-libjack-pipewire pavucontrol pamixer
-
-# Service Package
-dbus elogind NetworkManager lightdm rtkit polkit
-```
-
----
-
-## 🎨 Themes
-
-Tersedia 2 theme utama:
-
-### Everforest Dark
-
-### TokyoNight Storm
-
-Kamu bisa mengganti theme melalui:
-
-```bash
-lxappearance
-```
+| Keybinding              | Fungsi                         |
+| ----------------------- | ------------------------------ |
+| `Super + Enter`         | Open **Alacritty**             |
+| `Super + Shift + Enter` | Open **XFCE4 Terminal**        |
+| `Super + d`             | Rofi App Launcher (drun)       |
+| `Super + y`             | Rofi Window Switcher           |
+| `Super + Shift + y`     | Rofi Monitor Menu              |
+| `Super + e`             | Open **Thunar** (File Manager) |
+| `Super + w`             | Open **Firefox**               |
+| `Print`                 | Flameshot GUI                  |
+| `Super + Shift + s`     | Flameshot GUI (Alternate)      |
+| `Super + Shift + w`     | Open `nmtui` (WiFi Manager)    |
+| `Super + n`             | Monitor Connect (HDMI)         |
+| `Super + m`             | Monitor Disconnect (HDMI)      |
+| `XF86AudioRaiseVolume`  | Volume Up                      |
+| `XF86AudioLowerVolume`  | Volume Down                    |
+| `XF86AudioMute`         | Mute Audio                     |
+| `XF86AudioMicMute`      | Toggle Mic                     |
+| `Super + Shift + a`     | Audio Output Switch            |
+| `XF86MonBrightnessUp`   | Brightness Up                  |
+| `XF86MonBrightnessDown` | Brightness Down                |
+| `XF86PowerOff`          | Power Menu                     |
+| `Super + p`             | Power Profiles Menu            |
 
 ---
 
-## 🔤 Fonts
+### BSPWM Window Management
 
-Termasuk:
-
-* FiraCode Nerd Font
-* IosevkaTerm Nerd Font
-* JetBrainsMono Nerd Font
-* Symbols Nerd Font
-
-Setelah install, refresh cache:
-
-```bash
-fc-cache -fv
-```
-
----
-
-## ⚙ Default Keybind (sxhkd)
-
-| Key                 | Fungsi        |
-| ------------------- | ------------- |
-| `Super + Enter`     | Buka Terminal |
-| `Super + d`         | Rofi Launcher |
-| `Super + alt + r`   | Reload BSPWM  |
-| `Super +  q`        | Close Window  |
+| Keybinding                            | Fungsi                              |
+| ------------------------------------- | ----------------------------------- |
+| `Super + Alt + r`                     | Reload BSPWM                        |
+| `Super + q`                           | Close Focused Window                |
+| `Super + f`                           | Toggle Fullscreen                   |
+| `Super + Shift + f`                   | Set Tiled Mode                      |
+| `Super + Space`                       | Toggle Floating                     |
+| `Super + Shift + Space`               | Force Tiled (~floating)             |
+| `Super + h / j / k / l`               | Move Focus (West/South/North/East)  |
+| `Super + Shift + h / j / k / l`       | Swap Window (West/South/North/East) |
+| `Super + Alt + h / j / k / l`         | Resize Window (Expand)              |
+| `Super + Alt + Shift + h / j / k / l` | Resize Window (Shrink)              |
 
 ---
 
-## 🔊 Audio
+### Workspace Management
 
-Menggunakan:
-
-* PipeWire
-* WirePlumber
-
-Helper script tersedia di:
-
-```
-~/.config/other/pipewire/
-```
+| Keybinding            | Fungsi                         |
+| --------------------- | ------------------------------ |
+| `Super + 1-6`         | Switch to Workspace 1–6        |
+| `Super + 7-9`         | Switch to Workspace Desktop7–9 |
+| `Super + Shift + 1-6` | Move Window to Workspace 1–6   |
+| `Super + Tab`         | Next Workspace                 |
+| `Super + Shift + Tab` | Previous Workspace             |
 
 ---
 
-## 🖼 Wallpaper
-
-Wallpaper tersedia di:
-
-```
-~/.config/bspwm/wallpaper/
-```
-
-Bisa diganti manual atau via script.
-
----
-
-## ❗ Troubleshooting
-
-Jika BSPWM tidak muncul:
-
-```bash
-echo "exec bspwm" > ~/.xinitrc
-startx
-```
-
-Jika polybar tidak muncul:
-
-```bash
-~/.config/polybar/launch.sh
-```
-
----
-
-## 🧹 Uninstall
+## Uninstall
 
 Hapus konfigurasi:
 
@@ -180,14 +106,5 @@ rm -rf ~/.config/dunst
 
 ---
 
-## 🧠 Tips
-
-* Gunakan `startx` jika tanpa display manager
-* Gunakan LightDM untuk login GUI
-* Backup dotfiles lama sebelum install
-
----
----
----
 #### Create By
 @[Gh0sT4n](https://github.com/gh0st4n/)
