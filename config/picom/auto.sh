@@ -1,24 +1,26 @@
 #!/bin/bash
 # ~/.config/picom/auto.sh
 
-# Cek apakah picom sudah berjalan
+CONFIG="$HOME/.config/picom/picom.conf"
+
+# Check if Picom is running
 if pgrep -x "picom" >/dev/null; then
-    echo "Picom sudah berjalan, menghentikan..."
+    echo "Picom is already running, stop..."
     pkill -x picom
     sleep 0.5
 fi
 
-# Pastikan benar-benar mati
+# Make sure the device is completely shutdowm.
 while pgrep -x picom >/dev/null; do 
     sleep 0.1
 done
 
-# Start picom dengan config jika ada, jika tidak pakai default
-if [[ -f "$HOME/.config/picom/picom.conf" ]]; then
-    echo "Memulai picom dengan config..."
-    picom --config "$HOME/.config/picom/picom.conf" --daemon
+# Start picom with config if there is one, if not use default
+if [[ -f "$CONFIG" ]]; then
+    echo "Starting picom with config..."
+    picom --config "$CONFIG" --daemon
 else
-    echo "Config tidak ditemukan, memulai picom default..."
+    echo "Config not found, starting default picom..."
     picom --daemon
 fi
 

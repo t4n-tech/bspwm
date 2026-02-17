@@ -9,7 +9,8 @@ if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
 fi
 
 # Kill old instances
-killall -q polybar dunst
+pkill -x dunst
+pkill -x polybar
 pkill -x sxhkd
 
 while pgrep -u "$UID" -x polybar >/dev/null; do sleep 1; done
@@ -21,9 +22,11 @@ feh --bg-fill "$HOME/.config/bspwm/wallpaper/Sinon-3.jpg" &
 # Start sxhkd properly
 sxhkd &
 
+# Polybar
+~/.config/polybar/launch.sh &
+
 # Picom
 ~/.config/picom/auto.sh &
-~/.config/picom/pause.sh &
 
 # Dunst
 dunst &
