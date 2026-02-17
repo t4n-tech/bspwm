@@ -1,8 +1,0 @@
-- Color : ./
-- Variable Path : ./
-- List Package : ./
-- Fungsi Helper : 7/7
-- Fungsi Copy Config : 4/4
-- Setup Full : ./
-- show banner : ./
-- main function : ./
