@@ -105,7 +105,6 @@ PACKAGES_BASE=(
     noto-fonts-cjk
 )
 
-
 PACKAGES_PIPEWIRE=(
     pipewire wireplumber
     libspa-bluetooth
@@ -255,7 +254,8 @@ copy_dotfiles() {
     # Konfigurasi sistem
     [[ -d "$SCRIPT_DIR/other/xorg.conf.d" ]] && sudo cp -r "$SCRIPT_DIR/other/xorg.conf.d" /etc/X11/
     [[ -f "$SCRIPT_DIR/other/resolv.conf" ]] && sudo cp "$SCRIPT_DIR/other/resolv.conf" /etc/
-    [[ -d "$SCRIPT_DIR/other/root" ]] && sudo cp -r "$SCRIPT_DIR/other/root/.bashrc" /root/ 2>/dev/null || true
+    [[ -f "$SCRIPT_DIR/other/logind.conf" ]] && sudo cp -r "$SCRIPT_DIR/other/root/logind.conf" /etc/elogind/
+    [[ -f "$SCRIPT_DIR/other/root" ]] && sudo cp "$SCRIPT_DIR/other/root/.bashrc" /root/ 2>/dev/null || true
 
     success "Dotfiles are finished being copied and modified."
 }
@@ -271,6 +271,22 @@ setup_services() {
         fi
     done
     success "Service is activated."
+}
+
+disable_services() {
+    info "Disabling system services..."
+    local services=(acpid dhcpcd wpa_supplicant)
+    for svc in "${services[@]}"; do
+        if [[ -L "/var/service/$svc" ]]; then
+            sudo sv down "$svc" 2>/dev/null
+            sudo rm -f "/var/service/$svc"
+            info "$svc stopped and disabled."
+        else
+            warn "$svc is not enabled or not found."
+        fi
+    done
+
+    success "All selected services disabled."
 }
 
 setup_additional() {
@@ -343,6 +359,7 @@ main() {
     setup_pipewire
     copy_dotfiles
     setup_services
+    disable_services
     setup_additional
     setup_betterlockscreen
     final_message
