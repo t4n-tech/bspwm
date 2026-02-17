@@ -17,8 +17,6 @@ install-intel  →  intel
 install-amd    →  amd
 ```
 
----
-
 ## Struktur Project
 
 ```
@@ -29,8 +27,6 @@ icons/         → Icon theme
 other/         → Tambahan (pipewire, xorg config, dll)
 install        → Script auto installer
 ```
-
----
 
 ## Default Keybind (sxhkd)
 
@@ -60,8 +56,6 @@ install        → Script auto installer
 | `XF86PowerOff`          | Power Menu                     |
 | `Super + p`             | Power Profiles Menu            |
 
----
-
 ### BSPWM Window Management
 
 | Keybinding                            | Fungsi                              |
@@ -77,8 +71,6 @@ install        → Script auto installer
 | `Super + Alt + h / j / k / l`         | Resize Window (Expand)              |
 | `Super + Alt + Shift + h / j / k / l` | Resize Window (Shrink)              |
 
----
-
 ### Workspace Management
 
 | Keybinding            | Fungsi                         |
@@ -87,9 +79,7 @@ install        → Script auto installer
 | `Super + 7-9`         | Switch to Workspace Desktop7–9 |
 | `Super + Shift + 1-6` | Move Window to Workspace 1–6   |
 | `Super + Tab`         | Next Workspace                 |
-| `Super + Shift + Tab` | Previous Workspace             |
-
----
+| `Super + Shift + Tab` | Previous Workspace             |************
 
 ## Uninstall
 
