@@ -4,7 +4,7 @@ sleep 0.3
 
 # DBUS
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
-    log "Not Found D-Bus session, Running dbus-launch..."
+    echo "Not Found D-Bus session, Running dbus-launch..."
     eval "$(dbus-launch --sh-syntax --exit-with-session)"
 fi
 
