@@ -1,157 +1,35 @@
 #!/usr/bin/env bash
-# BSPWM Autostart Script - Clean Version
 
-# =========== CONFIGURATION =========== #
-WALLPAPER="$HOME/.config/bspwm/wallpaper/Sinon-3.jpg"
-POLYBAR_LAUNCH="$HOME/.config/polybar/launch.sh"
-PICOM_AUTO="$HOME/.config/picom/auto.sh"
-PICOM_PAUSE="$HOME/.config/picom/pause.sh"
-PICOM_CONFIG="$HOME/.config/picom/picom.conf"
-POLKIT_AGENT="/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
-MONITOR_SCRIPT="$HOME/.config/sxhkd/scripts/monitor"
-CUSTOM_SCRIPT="$HOME/.config/bspwm/scripts/00A"
+sleep 0.3
 
-# =========== UTILITY FUNCTIONS =========== #
-log() { echo "[AUTOSTART] $1"; }
-warn() { echo "[WARNING] $1"; }
-
-# Kill process gracefully
-kill_process() {
-    local name=$1
-    if pgrep -x "$name" >/dev/null; then
-        log "Stopping $name..."
-        pkill -x "$name"
-        # Wait up to 3 seconds
-        for _ in {1..6}; do
-            pgrep -x "$name" >/dev/null || break
-            sleep 0.5
-        done
-        pgrep -x "$name" >/dev/null && pkill -9 -x "$name" 2>/dev/null
-    fi
-}
-
-# Run command if executable exists
-run_if() {
-    local name=$1
-    local cmd=$2
-    if command -v "${cmd%% *}" >/dev/null 2>&1; then
-        log "Starting $name..."
-        eval "$cmd" &
-        return 0
-    else
-        warn "$name not found"
-        return 1
-    fi
-}
-
-# Run script if exists and executable
-run_script() {
-    local name=$1
-    local path=$2
-    if [[ -x "$path" ]]; then
-        log "Running $name..."
-        "$path" &
-        return 0
-    else
-        warn "$name script not found or not executable: $path"
-        return 1
-    fi
-}
-
-# =========== D-BUS SESSION =========== #
+# DBUS
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     log "Not Found D-Bus session, Running dbus-launch..."
     eval "$(dbus-launch --sh-syntax --exit-with-session)"
 fi
 
-# =========== MAIN =========== #
-log "========================================"
-log "     BSPWM AUTOSTART SCRIPT"
-log "========================================"
+# Kill old instances
+killall -q polybar dunst
+pkill -x sxhkd
 
-# Wait for WM to be ready
-sleep 0.5
-
-# Kill old processes
-for p in picom polybar dunst sxhkd; do
-    kill_process "$p"
-done
+while pgrep -u "$UID" -x polybar >/dev/null; do sleep 1; done
+while pgrep -u "$UID" -x dunst >/dev/null; do sleep 1; done
 
 # Wallpaper
-if [[ -f "$WALLPAPER" ]]; then
-    log "Setting wallpaper..."
-    feh --bg-fill "$WALLPAPER"
-else
-    warn "Wallpaper not found: $WALLPAPER"
-    log "Using fallback wallpaper..."
-    feh --bg-fill --randomize /usr/share/backgrounds/* 2>/dev/null || xsetroot -solid "#2E3440"
-fi
+feh --bg-fill "$HOME/.config/bspwm/wallpapr/Sinon-3.jpg" &
 
-# Polybar
-run_script "Polybar" "$POLYBAR_LAUNCH" || run_if "Polybar (default)" "polybar top"
+# Start sxhkd properly
+sxhkd &
 
 # Picom
-if command -v picom >/dev/null; then
-    run_script "Picom (auto)" "$PICOM_AUTO" || \
-    { [[ -f "$PICOM_CONFIG" ]] && run_if "Picom (config)" "picom --config $PICOM_CONFIG"; } || \
-    run_if "Picom (default)" "picom"
-    run_script "Picom pause" "$PICOM_PAUSE"
-else
-    warn "picom not installed"
-fi
+~/.config/picom/auto.sh &
+~/.config/picom/pause.sh &
 
 # Dunst
-run_if "Dunst" "dunst"
+dunst &
 
-# Network Manager Applet
-run_if "NetworkManager Applet" "nm-applet"
-
-# Audio tray
-run_if "pasystray" "pasystray" || run_if "pnmixer" "pnmixer"
-
-# PipeWire
-if command -v pipewire >/dev/null && ! pgrep -x pipewire >/dev/null; then
-    log "Starting PipeWire..."
-    if [[ -z "$DBUS_SESSION_BUS_ADDRESS" ]] && command -v dbus-run-session >/dev/null; then
-        dbus-run-session -- pipewire &
-    else
-        pipewire &
-    fi
-    sleep 1
-    run_if "WirePlumber" "wireplumber"
-    run_if "PipeWire-Pulse" "pipewire-pulse"
-fi
-
-# Polkit agent
-run_script "Polkit agent" "$POLKIT_AGENT"
-
-# Power management
-log "Configuring power saving..."
-xset s 480
-xset dpms 600 600 600
-
-# Keyboard settings
-log "Setting keyboard layout and rate..."
-setxkbmap us
-xset r rate 200 40
-run_if "numlockx" "numlockx on"
+# Polkit
+/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &
 
 # Monitor hotplug
-run_script "Monitor hotplug" "$MONITOR_SCRIPT"
-
-# SXHKD
-run_if "SXHKD" "sxhkd"
-
-# System tray extras
-run_if "Bluetooth applet" "blueman-applet"
-run_if "Power manager" "xfce4-power-manager"
-
-# Custom user script
-run_script "Custom autostart" "$CUSTOM_SCRIPT"
-
-log "========================================"
-log "     AUTOSTART COMPLETED"
-log "========================================"
-
-export BSPWM_AUTOSTART_COMPLETE=1
-exit 0
+~/.config/sxhkd/scripts/monitor &
