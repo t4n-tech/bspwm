@@ -16,7 +16,7 @@ while pgrep -u "$UID" -x polybar >/dev/null; do sleep 1; done
 while pgrep -u "$UID" -x dunst >/dev/null; do sleep 1; done
 
 # Wallpaper
-feh --bg-fill "$HOME/.config/bspwm/wallpapr/Sinon-3.jpg" &
+feh --bg-fill "$HOME/.config/bspwm/wallpaper/Sinon-3.jpg" &
 
 # Start sxhkd properly
 sxhkd &
@@ -29,7 +29,7 @@ sxhkd &
 dunst &
 
 # Polkit
-/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &
+polkit-gnome-authentication-agent-1 &
 
 # Monitor hotplug
 ~/.config/sxhkd/scripts/monitor &
