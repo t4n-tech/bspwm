@@ -17,7 +17,7 @@ while pgrep -u "$UID" -x polybar >/dev/null; do sleep 1; done
 while pgrep -u "$UID" -x dunst >/dev/null; do sleep 1; done
 
 # Wallpaper
-feh --bg-fill "$HOME/.config/bspwm/wallpaper/Sinon-3.jpg" &
+feh --bg-fill "$HOME/.config/bspwm/wallpaper/Void-1.jpg" &
 
 # Start sxhkd properly
 sxhkd &
